@@ -2,15 +2,33 @@ use std::{error, fs, io, path::Path, sync::{Arc, atomic::{AtomicBool, Ordering}}
 use rand::{seq::SliceRandom, thread_rng, Rng};
 use rodio::{Decoder, OutputStream, Sink};
 
+mod adjust_sound;
+
+use adjust_sound::{get_volume_level, adjust_volume};
+
 fn main() {
     let sound_directory = "./src/sounds";
+    let output_directory = "./src/ready_sounds";
 
     let sound_files: Vec<_> = fs::read_dir(sound_directory)
         .expect("Failed to read directory")
         .filter_map(Result::ok)
         .filter_map(|entry| {
             let path = entry.path();
-            if path.is_file() && path.extension().map_or(false, |ext| ext == "mp3") {
+            if path.is_file() && path.extension().map_or(false, |ext| ext == "wav") {
+                Some(path.to_str().unwrap().to_owned())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let ready_sound_files: Vec<_> = fs::read_dir(output_directory)
+        .expect("Failed to read directory")
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let path = entry.path();
+            if path.is_file() && path.extension().map_or(false, |ext| ext == "wav") {
                 Some(path.to_str().unwrap().to_owned())
             } else {
                 None
@@ -19,9 +37,14 @@ fn main() {
         .collect();
 
     if sound_files.is_empty() {
-        println!("No mp3 files found in the directory");
+        println!("No wav files found in the directory");
         return;
     }
+
+    // The outputed files are silent for some reason
+    // if let Err(error) = adjust_sounds(&sound_files, output_directory) {
+    //     eprintln!("Error adjusting sounds: {}", error);
+    // }
 
     println!("Welcome to Echo of the Wild.");
     println!("Enter a command: ");
@@ -101,6 +124,20 @@ fn echo_of_wild(files: &[String], stop_flag: &Arc<AtomicBool>) -> Result<(), Box
         let interval = Duration::from_secs(thread_rng().gen_range(1..11));
         println!("Waiting for {} seconds", interval.as_secs());
         thread::sleep(interval);
+    }
+
+    Ok(())
+}
+
+fn adjust_sounds(sound_files: &Vec<String>, output_directory: &str) -> Result<(), Box<dyn std::error::Error>> {
+    for file in sound_files {
+        let volume_level = get_volume_level(file)?;
+
+        let volume_factor = 10.0 / volume_level;
+
+        let file_name = Path::new(file).file_name().unwrap().to_str().unwrap();
+        let output_file_path = Path::new(output_directory).join(file_name);
+        adjust_volume(file, output_file_path.to_str().unwrap(), volume_factor)?;
     }
 
     Ok(())
