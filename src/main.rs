@@ -7,7 +7,7 @@ mod adjust_sound;
 use adjust_sound::{get_volume_level, adjust_volume};
 
 fn main() {
-    let sound_directory = "./src/sounds";
+    let sound_directory = "./sounds";
     let output_directory = "./src/ready_sounds";
 
     let sound_files: Vec<_> = fs::read_dir(sound_directory)
@@ -121,7 +121,7 @@ fn echo_of_wild(files: &[String], stop_flag: &Arc<AtomicBool>) -> Result<(), Box
             break;
         }
         // wait before next sound
-        let interval = Duration::from_secs(thread_rng().gen_range(1..11));
+        let interval = Duration::from_secs(thread_rng().gen_range(1..180));
         println!("Waiting for {} seconds", interval.as_secs());
         thread::sleep(interval);
     }
