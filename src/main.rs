@@ -26,7 +26,6 @@ fn main() {
     println!("Welcome to Echo of the Wild.");
     println!("Enter a command: ");
 
-    let mut echo_thread_handle: Option<thread::JoinHandle<()>> = None;
     let stop_flag = Arc::new(AtomicBool::new(false));
     let input_thread_handle = thread::spawn({
             let stop_flag = stop_flag.clone();
@@ -44,6 +43,7 @@ fn main() {
                                     println!("Echo of the Wild is already running.")
                                 } else {
                                     is_echo_running = true;
+                                    stop_flag.store(false, Ordering::SeqCst);
                                     let files_clone = sound_files.clone();
                                     let stop_flag_clone = stop_flag.clone();
                                     thread::spawn(move || {
@@ -55,8 +55,9 @@ fn main() {
                             },
                             "stop" => {
                                 stop_flag.store(true, Ordering::SeqCst);
-                                break;
+                                is_echo_running = false;
                             },
+                            "exit" => break,
                             _ => println!("Invalid command"),
                         }
                     }
@@ -93,7 +94,9 @@ fn echo_of_wild(files: &[String], stop_flag: &Arc<AtomicBool>) -> Result<(), Box
         while sink.len() > 0 {
             thread::sleep(Duration::from_millis(100));
         }
-
+        if stop_flag.load(Ordering::SeqCst) {
+            break;
+        }
         // wait before next sound
         let interval = Duration::from_secs(thread_rng().gen_range(1..11));
         println!("Waiting for {} seconds", interval.as_secs());

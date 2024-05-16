@@ -8,3 +8,4 @@ Available commands:
 
 `init` - to start the execution
 `stop` - to stop the execution
+`exit` - to exit the program
