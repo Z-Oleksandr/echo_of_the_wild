@@ -1,4 +1,4 @@
-use std::{error, fs, io, path::Path, sync::atomic::{AtomicBool, Ordering}, thread, time::Duration};
+use std::{error, fs, io, path::Path, sync::{Arc, atomic::{AtomicBool, Ordering}}, thread, time::Duration};
 use rand::{seq::SliceRandom, thread_rng, Rng};
 use rodio::{Decoder, OutputStream, Sink};
 
@@ -27,55 +27,60 @@ fn main() {
     println!("Enter a command: ");
 
     let mut echo_thread_handle: Option<thread::JoinHandle<()>> = None;
-    // let stop_flag = Arc::new(AtomicBool::new(false));
-    let input_thread_handle = thread::spawn(move || {
+    let stop_flag = Arc::new(AtomicBool::new(false));
+    let input_thread_handle = thread::spawn({
+            let stop_flag = stop_flag.clone();
+            move || {
+            let mut is_echo_running = false;
 
-        let mut input = String::new();
-        let mut is_echo_running = false;
-
-        loop {   
-            match io::stdin().read_line(&mut input) {
-                Ok(_) => {
-                    println!("Received: {}", input);
-                    match input.trim() {
-                        "init" => {
-                            if is_echo_running {
-                                println!("Echo of the Wild is already running.")
-                            } else {
-                                is_echo_running = true;
-                                let files_clone = sound_files.clone();
-                                echo_thread_handle = Some(thread::spawn(move || {
-                                    if let Err(error) = echo_of_wild(&files_clone) {
-                                        eprintln!("Error on echo_of_wild run: {}", error);
-                                    }
-                                }));
-                            }
-                        },
-                        "stop" => break,
-                        _ => println!("Invalid command"),
+            loop {   
+                let mut input = String::new();
+                match io::stdin().read_line(&mut input) {
+                    Ok(_) => {
+                        println!("Received: {}", input);
+                        match input.trim() {
+                            "init" => {
+                                if is_echo_running {
+                                    println!("Echo of the Wild is already running.")
+                                } else {
+                                    is_echo_running = true;
+                                    let files_clone = sound_files.clone();
+                                    let stop_flag_clone = stop_flag.clone();
+                                    thread::spawn(move || {
+                                        if let Err(error) = echo_of_wild(&files_clone, &stop_flag_clone) {
+                                            eprintln!("Error on echo_of_wild run: {}", error);
+                                        }
+                                    });
+                                }
+                            },
+                            "stop" => {
+                                stop_flag.store(true, Ordering::SeqCst);
+                                break;
+                            },
+                            _ => println!("Invalid command"),
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!("Error: {}", error);
+                        break;
                     }
                 }
-                Err(error) => {
-                    eprintln!("Error: {}", error);
-                    break;
-                }
             }
-            input.clear();
-        }
-
-        if let Some(handle) = echo_thread_handle {
-            handle.join().expect("Echo thread paniked");
         }
     });
 
     input_thread_handle.join().expect("Input thread panicked");
 }
 
-fn echo_of_wild(files: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+fn echo_of_wild(files: &[String], stop_flag: &Arc<AtomicBool>) -> Result<(), Box<dyn std::error::Error>> {
     let (_stream, stream_handle) = OutputStream::try_default()?;
     let sink = Sink::try_new(&stream_handle)?;
 
     loop {
+        if stop_flag.load(Ordering::SeqCst) {
+            break;
+        }
+
         let sound_path = files.choose(&mut thread_rng()).unwrap();
 
         let sound = fs::File::open(sound_path)?;
@@ -94,4 +99,6 @@ fn echo_of_wild(files: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         println!("Waiting for {} seconds", interval.as_secs());
         thread::sleep(interval);
     }
+
+    Ok(())
 }
